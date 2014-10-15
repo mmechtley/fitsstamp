@@ -12,7 +12,7 @@ _stampsec_key = 'STAMPSEC'
 _stampsec_comment = 'Section of original image from which stamp was extracted'
 
 
-def _stamp_from_regions(hdu_list, regions, extension='SCI', masked_value=None,
+def _stamp_from_regions(hdu_list, regions, extension=0, masked_value=None,
                         mask_inf_nan=False):
     """
     Cut a stamp using mask data (such as from pyregion spatial filter)
@@ -99,8 +99,9 @@ def cut_regions_from_image(imgfile, regfile, extension=0, base_name='',
         stamp = _stamp_from_regions(hdu_list, name_regs, extension=extension,
                                     masked_value=masked_value,
                                     mask_inf_nan=mask_inf_nan)
-        stamp.writeto(base_name+name+'.fits', clobber=True)
-        all_stamps += [base_name+name+'.fits']
+        filename = base_name + name + '.fits'
+        stamp.writeto(filename, clobber=True)
+        all_stamps += [filename]
     
     hdu_list.close()
 
