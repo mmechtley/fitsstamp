@@ -1,0 +1,40 @@
+#!/usr/bin/env python
+"""
+Pastes a stamp image back into a larger image from which it was cut. Stamp image
+must retain the STAMPSEC keyword in the FITS header. Right now this doesn't work
+on MEF, it will assume extension 0 for both images.
+
+Example:
+fitsstamp_paste source_stamp.fits destination_image.fits
+"""
+
+from astropy.io import fits
+import sys
+import re
+
+if __name__ == '__main__':
+    try:
+        stamp_img = sys.argv[1]
+        orig_img = sys.argv[2]
+    except IndexError:
+        print(__doc__)
+        exit(1)
+
+    stamp = fits.open(stamp_img)
+    paste_slice = stamp.header['STAMPSEC'].strip('[]')
+    paste_slice = re.split('\D+', paste_slice)
+    paste_slice = [int(num) for num in paste_slice]
+    # Reverse the order of the numbers since STAMPSEC is X,Y whereas numpy
+    # slices are Y,X
+    paste_slice = (slice(paste_slice[2], paste_slice[3]),
+                   slice(paste_slice[0], paste_slice[1]))
+
+    slice_size = tuple([sl.stop - sl.start for sl in paste_slice])
+
+    if slice_size != stamp[0].data.shape:
+        raise ValueError('Shape of stamp image does not match shape of STAMPSEC'
+                         ' header keyword.')
+
+    with fits.open(orig_img) as orig:
+        orig[0].data[paste_slice] = stamp[0].data
+    stamp.close()

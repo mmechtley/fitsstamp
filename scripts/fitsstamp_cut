@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+"""
+Cuts stamp images from a larger image, with stamps defined by a DS9 region file.
+Additional keyword arguments can be supplied in -KEYWORD VALUE format. Possible
+additional keyword arguments:
+-extension, -base_name, -masked_value, -mask_inf_nan
+
+
+Examples:
+fitsstamp_cut uds_full_f160w_sci.fits my_favorite_galaxies.reg
+fitsstamp_cut img.fits regions.reg -extension 1 -mask_inf_nan True
+"""
+
+import fitsstamp
+import sys
+from inspect import getargspec
+from ast import literal_eval
+
+if __name__ == '__main__':
+    cl_args = dict()
+    arg_names = getargspec(fitsstamp.cut_regions_from_image)[0]
+    for arg_name in arg_names:
+        try:
+            arg_ind = sys.argv.index('-'+arg_name)
+        except ValueError:
+            continue
+        try:
+            cl_args[arg_name] = sys.argv[arg_ind+1]
+            del sys.argv[arg_ind:arg_ind+2]
+        except IndexError:
+            print(__doc__)
+            exit(1)
+        # convert ints, floats, bool etc. to python literals. Bare string
+        # (without additional quotes) will raise ValueError and remain unchanged
+        try:
+            cl_args[arg_name] = literal_eval(cl_args[arg_name])
+        except ValueError:
+            pass
+
+    try:
+        img_name = sys.argv[1]
+        reg_name = sys.argv[2]
+    except IndexError:
+        print(__doc__)
+        exit(1)
+
+    cut = fitsstamp.cut_regions_from_image(img_name, reg_name, **cl_args)
+    print('Cutting complete for {:d} stamps'.format(len(cut)))
