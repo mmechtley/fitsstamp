@@ -1,24 +1,36 @@
 #!/usr/bin/env python
 """
-Cuts stamp images from a larger image, with stamps defined by a DS9 region file.
-Additional keyword arguments can be supplied in -KEYWORD VALUE format. Possible
-additional keyword arguments:
--extension, -base_name, -masked_value, -mask_inf_nan
-
+Cuts stamp images from a larger image, with individual objects defined by a DS9
+region file or sextractor segmentation map.
+Additional keyword arguments can be supplied in -<keyword> <value> format. See
+the docstring for fitsstamp.cut_stamps for additional information.
+Understood keyword arguments:
+{0}
 
 Examples:
 fitsstamp_cut uds_full_f160w_sci.fits my_favorite_galaxies.reg
 fitsstamp_cut img.fits regions.reg -extension 1 -mask_inf_nan True
+fitsstamp_cut img.fits segs.fits -selected_labels [1234,382,660361]
 """
 
 import fitsstamp
 import sys
+import textwrap
 from inspect import getargspec
 from ast import literal_eval
+from astropy.io import fits
+
+def print_doc():
+    arg_names, _args, _kw, arg_vals = getargspec(fitsstamp.cut_stamps)
+    arg_names = arg_names[-len(arg_vals):]
+    arg_list = ', '.join(['-'+nm for nm in arg_names])
+    arg_list = '\n'.join(textwrap.wrap(arg_list, 80))
+    print(__doc__.format(arg_list))
 
 if __name__ == '__main__':
+    # Process command line arguments to be passed to cut_stamps function
     cl_args = dict()
-    arg_names = getargspec(fitsstamp.cut_regions_from_image)[0]
+    arg_names = getargspec(fitsstamp.cut_stamps)[0]
     for arg_name in arg_names:
         try:
             arg_ind = sys.argv.index('-'+arg_name)
@@ -28,7 +40,7 @@ if __name__ == '__main__':
             cl_args[arg_name] = sys.argv[arg_ind+1]
             del sys.argv[arg_ind:arg_ind+2]
         except IndexError:
-            print(__doc__)
+            print_doc()
             exit(1)
         # convert ints, floats, bool etc. to python literals. Bare string
         # (without additional quotes) will raise ValueError and remain unchanged
@@ -38,11 +50,19 @@ if __name__ == '__main__':
             pass
 
     try:
-        img_name = sys.argv[1]
-        reg_name = sys.argv[2]
+        img_file = sys.argv[1]
+        reg_file = sys.argv[2]
     except IndexError:
-        print(__doc__)
+        print_doc()
         exit(1)
 
-    cut = fitsstamp.cut_regions_from_image(img_name, reg_name, **cl_args)
+    # Check if the format of reg_file has been specified. If not, infer it.
+    if not 'region_format' in cl_args:
+        try:
+            fits.info(reg_file, output=False)
+            cl_args['region_format'] = 'label'
+        except IOError:
+            cl_args['region_format'] = 'region'
+
+    cut = fitsstamp.cut_stamps(img_file, reg_file, **cl_args)
     print('Cutting complete for {:d} stamps'.format(len(cut)))
