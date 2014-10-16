@@ -35,6 +35,7 @@ if __name__ == '__main__':
         raise ValueError('Shape of stamp image does not match shape of STAMPSEC'
                          ' header keyword.')
 
-    with fits.open(orig_img) as orig:
+    with fits.open(orig_img, mode='update') as orig:
         orig[0].data[paste_slice] = stamp[0].data
+        orig.flush()
     stamp.close()
