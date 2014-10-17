@@ -4,11 +4,9 @@ specifying which region to cut.
 """
 import astropy.io.fits as fits
 import astropy.wcs as wcs
+import pyregion
 from numpy import where, isfinite, array
-try:
-    import pyregion
-except ImportError:
-    pyregion = None
+import re
 
 _stampsec_key = 'STAMPSEC'
 _stampsec_comment = 'Section of original image from which stamp was extracted'
@@ -24,7 +22,6 @@ def _stamp_from_regions(hdu_list, regions, extension=0, **kwargs):
     :param kwargs: Additional arguments passed to _stamp_from_mask
     :rtype: FITS PrimaryHDU with the original image header information.
     """
-    # TODO: Something in this function (or writeto?) is slower than expected
     data_shape = hdu_list[extension].data.shape
     regions = pyregion.ShapeList(regions)
     mask = regions.get_filter().mask(data_shape)
@@ -95,7 +92,7 @@ def _stamp_from_mask(hdu_list, mask, extension=0, masked_value=None,
     return new_hdu
 
 
-def _cut_stamps_regions(imgfile, regfile, extension=0, base_name='',
+def _cut_stamps_regions(source_file, region_file, source_ext=0, file_prefix='',
                         selected_labels=None, **kwargs):
     """
     Cuts stamps from a FITS image based on a DS9 region file. See docstring for
@@ -103,13 +100,13 @@ def _cut_stamps_regions(imgfile, regfile, extension=0, base_name='',
     """
     # Open region file first, so parse errors will fail before trying to open
     # a potentially large FITS file
-    regions = pyregion.open(regfile)
+    regions = pyregion.open(region_file)
 
     # Open cutting image
-    hdu_list = fits.open(imgfile, mode='readonly', ignore_missing_end=True)
+    hdu_list = fits.open(source_file, mode='readonly', ignore_missing_end=True)
 
     # Translate to image coordinates, since we're working in pixel space
-    regions = regions.as_imagecoord(hdu_list[extension].header)
+    regions = regions.as_imagecoord(hdu_list[source_ext].header)
 
     # If a region has a text label, use that as the default file name
     # reg.attr[1] is a dictionary of extended region attributes
@@ -122,8 +119,8 @@ def _cut_stamps_regions(imgfile, regfile, extension=0, base_name='',
     for name in set(names) & selected_labels:
         regs_for_name = [reg for reg, nm in zip(regions, names) if nm == name]
         stamp = _stamp_from_regions(hdu_list, regs_for_name,
-                                    extension=extension, **kwargs)
-        filename = base_name + name + '.fits'
+                                    extension=source_ext, **kwargs)
+        filename = file_prefix + name + '.fits'
         stamp.writeto(filename, clobber=True)
         all_stamp_names += [filename]
     hdu_list.close()
@@ -131,27 +128,27 @@ def _cut_stamps_regions(imgfile, regfile, extension=0, base_name='',
     return all_stamp_names
 
 
-def _cut_stamps_labels(imgfile, labelfile, extension=0, base_name='',
+def _cut_stamps_labels(source_file, label_file, source_ext=0, file_prefix='',
                        selected_labels=None, **kwargs):
     """
     Cuts stamps from a FITS image based on a FITS-format label image (e.g.
     sextractor segmentation map). See docstring for cut_stamps for argument
     explanations
     """
-    label_data = fits.getdata(labelfile)
+    label_data = fits.getdata(label_file)
     # If no specific labels were requested, cut stamps for every object
     if selected_labels is None:
         selected_labels = xrange(1, label_data.max()+1)
 
     # Open cutting image
-    hdu_list = fits.open(imgfile, mode='readonly', ignore_missing_end=True)
+    hdu_list = fits.open(source_file, mode='readonly', ignore_missing_end=True)
 
     all_stamp_names = []
     for obj_num in selected_labels:
         name = str(obj_num)
         stamp = _stamp_from_label(hdu_list, label_data, label_num=obj_num,
-                                  extension=extension, **kwargs)
-        filename = base_name + name + '.fits'
+                                  extension=source_ext, **kwargs)
+        filename = file_prefix + name + '.fits'
         stamp.writeto(filename, clobber=True)
         all_stamp_names += [filename]
     hdu_list.close()
@@ -159,8 +156,8 @@ def _cut_stamps_labels(imgfile, labelfile, extension=0, base_name='',
     return all_stamp_names
 
 
-def cut_stamps(imgfile, regfile, region_format='region', extension=0,
-               base_filename='', selected_labels=None, masked_value=None,
+def cut_stamps(source_file, region_file, region_format='region', source_ext=0,
+               file_prefix='', selected_labels=None, masked_value=None,
                mask_inf_nan=False):
     """
     Cuts stamps from imgfile for each region specified in a regfile. Two region
@@ -171,16 +168,16 @@ def cut_stamps(imgfile, regfile, region_format='region', extension=0,
     "label": Specifies regfile is a label image where each object's pixels are
         flagged by a unique non-zero integer (e.g., sextractor segmentation map)
 
-    :param imgfile: Filename of the image to cut from
-    :param regfile: Filename specifying the regions to cut. Expected format is
-        controlled by the region_format argument.
+    :param source_file: Filename of the image to cut from
+    :param region_file: Filename specifying the regions to cut. Expected format
+        is controlled by the region_format argument.
     :param region_format: The file format of regfile. Current options:
         "region" - for SAOImage DS9 region files
         "label" - for FITS images with integer unique labels for each object
-            (i.e. sextractor segmentation maps)
-    :param extension: FITS extension that contains the image data to cut
-    :param base_filename: Base filename, region name or number is appended.
-        E.g., if cutting science or weight maps, perhaps "sci_" or "wht_"
+        (i.e. sextractor segmentation maps)
+    :param source_ext: FITS extension that contains the image data to cut
+    :param file_prefix: Base filename, region name or number is appended.
+        E.g., if cutting from weight maps, perhaps "wht_"
     :param selected_labels: List of specific label numbers (or DS9 region text
         attributes) to output. Otherwise stamps are cut for all labels/regions.
     :param masked_value: Value with which to fill masked-out regions of stamps.
@@ -188,15 +185,59 @@ def cut_stamps(imgfile, regfile, region_format='region', extension=0,
     :param mask_inf_nan: Whether to replace inf/nan pixels with masked_value
     :rtype: List of filenames of created stamps.
     """
-    if region_format in ('region', 'DS9'):
+    region_format = region_format.lower()
+    if region_format in ('region', 'ds9'):
         cut_function = _cut_stamps_regions
     elif region_format in ('label', 'segmentation', 'sextractor'):
         cut_function = _cut_stamps_labels
     else:
         raise ValueError('Unknown region file mode')
 
-    return cut_function(imgfile, regfile, extension=extension,
-                        base_name=base_filename,
+    return cut_function(source_file, region_file, extension=source_ext,
+                        base_name=file_prefix,
                         selected_labels=selected_labels,
                         masked_value=masked_value,
                         mask_inf_nan=mask_inf_nan)
+
+
+def paste_stamps(target_file, stamp_files, target_ext=0, stamps_ext=0,
+                 output_name=None):
+    """
+    Pastes a collection of cut stamp images back into an original image. For
+    instance, if you cut a stamp, do a point source subtraction on a quasar, and
+    want to propagate the modified stamp back into the original image.
+
+    :param target_file: Image that the stamps will be pasted into
+    :param stamp_files: Stamp images that will be pasted into dest_file. Can
+        either be a single filename or a list of filenames.
+    :param target_ext: FITS extension of dest_file to paste into
+    :param stamps_ext: FITS extension of the stamp images to copy from
+    :param output_name: Name of the new file with pasted stamps. If none is
+        specified, a "_pasted" suffix will be appended to dest_file. E.g.
+        original.fits becomes original_pasted.fits. If output_name is the same
+        as dest_file, dest_file will be overwritten.
+    :return:
+    """
+    if isinstance(stamp_files, basestring):
+        stamp_files = [stamp_files]
+    if output_name is None:
+        output_name = target_file.replace('.fits', '_pasted.fits')
+    destination = fits.open(target_file)
+    for stamp_file in stamp_files:
+        stamp = fits.open(stamp_file)
+        paste_slice = stamp.header[_stampsec_key].strip('[]')
+        paste_slice = re.split('\D+', paste_slice)
+        paste_slice = [int(num) for num in paste_slice]
+        # Reverse the order of the numbers since STAMPSEC is X,Y whereas numpy
+        # slices are Y,X
+        paste_slice = (slice(paste_slice[2], paste_slice[3]),
+                       slice(paste_slice[0], paste_slice[1]))
+        slice_size = tuple([sl.stop - sl.start for sl in paste_slice])
+        if slice_size != stamp[stamps_ext].data.shape:
+            raise ValueError('Shape of stamp image does not match shape of '
+                             '{0} header keyword.'.format(_stampsec_key))
+        destination[target_ext].data[paste_slice] = stamp[stamps_ext].data
+        stamp.close()
+
+    destination.writeto(output_name, clobber=True)
+    destination.close()

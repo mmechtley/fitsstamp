@@ -38,4 +38,5 @@ setup(name=_packages[0],
                   'astronomical FITS image files.',
       packages=_packages,
       scripts=_scripts,
-      requires=_requires)
+      requires=_requires,
+      zip_safe=True)
