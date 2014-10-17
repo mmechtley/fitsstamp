@@ -19,6 +19,8 @@ import textwrap
 from inspect import getargspec
 from ast import literal_eval
 from astropy.io import fits
+from astropy.utils.exceptions import AstropyUserWarning
+from warnings import catch_warnings, filterwarnings
 
 def print_doc():
     arg_names, _args, _kw, arg_vals = getargspec(fitsstamp.cut_stamps)
@@ -46,7 +48,7 @@ if __name__ == '__main__':
         # (without additional quotes) will raise ValueError and remain unchanged
         try:
             cl_args[arg_name] = literal_eval(cl_args[arg_name])
-        except ValueError:
+        except (ValueError, SyntaxError):
             pass
 
     try:
@@ -59,10 +61,12 @@ if __name__ == '__main__':
     # Check if the format of reg_file has been specified. If not, infer it.
     if not 'region_format' in cl_args:
         try:
-            fits.info(reg_file, output=False)
+            with catch_warnings():
+                filterwarnings('ignore', category=AstropyUserWarning)
+                fits.info(reg_file, output=False)
             cl_args['region_format'] = 'label'
         except IOError:
             cl_args['region_format'] = 'region'
 
     cut = fitsstamp.cut_stamps(img_file, reg_file, **cl_args)
-    print('Cutting complete for {:d} stamps'.format(len(cut)))
+    print('Cutting complete for {0:d} stamps'.format(len(cut)))

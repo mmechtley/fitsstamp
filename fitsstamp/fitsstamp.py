@@ -8,8 +8,9 @@ import pyregion
 from numpy import where, isfinite, array
 import re
 
-_stampsec_key = 'STAMPSEC'
-_stampsec_comment = 'Section of original image from which stamp was extracted'
+_stamp_slice_key = 'STAMPSLC'
+_stamp_slice_comment = 'Numpy array slice [Y,X] of stamp area in original image'
+_stamp_slice_format = '[{0:d}:{1:d},{2:d}:{3:d}]'
 
 
 def _stamp_from_regions(hdu_list, regions, extension=0, **kwargs):
@@ -74,21 +75,20 @@ def _stamp_from_mask(hdu_list, mask, extension=0, masked_value=None,
 
     # Re-Center WCS
     wcs_file = wcs.WCS(hdu_list[extension].header)
-    # center is average of min and max pixels. Fits standard is 1-based and X,Y
-    # whereas extents slice is numpy 0-based and Y,X
+    # Center is average of min and max pixels. Fits standard is 1-based and X,Y.
+    # Extents slice is numpy 0-based, stop non-inclusive, and Y,X
     center = array((0.5*(extents[1].start + 1 + extents[1].stop),
                     0.5*(extents[0].start + 1 + extents[0].stop)))
     # The second argument here specifies the coordinate origin (1 for FITS)
     wcs_file.wcs.crval = wcs_file.all_pix2world([center], 1)[0]
-    # Center in new image. Alternatively, 0.5*(reversed(shape)+1)
+    # Center in new image. Equivalently, 0.5*(reversed(data.shape)+1)
     wcs_file.wcs.crpix = center - (extents[1].start, extents[0].start)
     new_hdu.header.extend(wcs_file.to_header(), update=True)
     new_hdu.update_header()
 
-    orig_sec_str = '[{0:d}:{1:d},{2:d}:{3:d}]'.format(
-        extents[1].start, extents[1].stop, extents[0].start, extents[0].stop)
-    new_hdu.header.update(_stampsec_key, orig_sec_str,
-                          comment=_stampsec_comment)
+    orig_sec_str = _stamp_slice_format.format(
+        extents[0].start, extents[0].stop, extents[1].start, extents[1].stop)
+    new_hdu.header[_stamp_slice_key] = (orig_sec_str, _stamp_slice_comment)
     return new_hdu
 
 
@@ -191,10 +191,10 @@ def cut_stamps(source_file, region_file, region_format='region', source_ext=0,
     elif region_format in ('label', 'segmentation', 'sextractor'):
         cut_function = _cut_stamps_labels
     else:
-        raise ValueError('Unknown region file mode')
+        raise ValueError('Unknown region file format')
 
-    return cut_function(source_file, region_file, extension=source_ext,
-                        base_name=file_prefix,
+    return cut_function(source_file, region_file, source_ext=source_ext,
+                        file_prefix=file_prefix,
                         selected_labels=selected_labels,
                         masked_value=masked_value,
                         mask_inf_nan=mask_inf_nan)
@@ -216,7 +216,7 @@ def paste_stamps(target_file, stamp_files, target_ext=0, stamps_ext=0,
         specified, a "_pasted" suffix will be appended to dest_file. E.g.
         original.fits becomes original_pasted.fits. If output_name is the same
         as dest_file, dest_file will be overwritten.
-    :return:
+    :rtype: Name of the modified target_file (i.e. value of output_name)
     """
     if isinstance(stamp_files, basestring):
         stamp_files = [stamp_files]
@@ -225,19 +225,18 @@ def paste_stamps(target_file, stamp_files, target_ext=0, stamps_ext=0,
     destination = fits.open(target_file)
     for stamp_file in stamp_files:
         stamp = fits.open(stamp_file)
-        paste_slice = stamp.header[_stampsec_key].strip('[]')
+        paste_slice = stamp[stamps_ext].header[_stamp_slice_key].strip('[]')
         paste_slice = re.split('\D+', paste_slice)
         paste_slice = [int(num) for num in paste_slice]
-        # Reverse the order of the numbers since STAMPSEC is X,Y whereas numpy
-        # slices are Y,X
-        paste_slice = (slice(paste_slice[2], paste_slice[3]),
-                       slice(paste_slice[0], paste_slice[1]))
+        paste_slice = (slice(paste_slice[0], paste_slice[1]),
+                       slice(paste_slice[2], paste_slice[3]))
         slice_size = tuple([sl.stop - sl.start for sl in paste_slice])
         if slice_size != stamp[stamps_ext].data.shape:
             raise ValueError('Shape of stamp image does not match shape of '
-                             '{0} header keyword.'.format(_stampsec_key))
+                             '{0} header keyword.'.format(_stamp_slice_key))
         destination[target_ext].data[paste_slice] = stamp[stamps_ext].data
         stamp.close()
-
     destination.writeto(output_name, clobber=True)
     destination.close()
+
+    return output_name
