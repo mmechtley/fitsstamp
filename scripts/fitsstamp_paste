@@ -10,7 +10,8 @@ Understood keyword arguments:
 
 Examples:
 fitsstamp_paste target_image.fits stamp1.fits stamp2.fits stamp3.fits
-fitsstamp_paste target_image.fits stamp.fits -target_ext 2
+fitsstamp_paste target_image.fits stamp.fits -target_ext SCI
+To overwrite target_image.fits instead of creating a new file:
 fitsstamp_paste target_image.fits stamp.fits -output_name target_image.fits
 """
 
@@ -54,7 +55,7 @@ if __name__ == '__main__':
         orig_img = sys.argv[1]
         stamp_imgs = sys.argv[2:]
     except IndexError:
-        print(__doc__)
+        print_doc()
         exit(1)
 
     pasted = fitsstamp.paste_stamps(orig_img, stamp_imgs, **cl_args)
