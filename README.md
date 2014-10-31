@@ -1,8 +1,9 @@
 fitsstamp
 =========
 Python module and command-line utilities for cutting and pasting small "stamp" 
-images from astronomical FITS image files. Stamp cutting locations can be 
-defined in one of two ways:
+images from astronomical FITS image files. WCS coordinate systems will be 
+correctly included in the stamp files if they are present in the original image.
+Stamp cutting locations can be defined in one of two ways:
 
 - SAOImage DS9 region files, including composite regions consisting of multiple 
   included/excluded parts by giving multiple regions a common text label
@@ -33,3 +34,8 @@ To install, simply run:
 To install in a non-standard location (e.g. a Dropbox folder)
     
     python setup.py install --prefix=~/Dropbox/Python
+
+Known and Unknown Bugs
+----------------------
+WCS propagation has only been tested for tangential projections in RA/Dec 
+2-dimensional data.
