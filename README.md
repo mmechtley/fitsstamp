@@ -1,4 +1,4 @@
-fitsstamp
+fitsstamp -- Woohoo fitsstamp
 =========
 Python module and command-line utilities for cutting and pasting small "stamp" 
 images from astronomical FITS image files. WCS coordinate systems will be 
