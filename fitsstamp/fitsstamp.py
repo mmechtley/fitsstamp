@@ -22,7 +22,7 @@ def _slice_to_string(nd_slice):
     :rtype: String representation of slice: [a:b, ... , y:z]
     """
     slice_str = ['{0:d}:{1:d}'.format(nd_slice[dim].start, nd_slice[dim].stop)
-                 for dim in xrange(len(nd_slice))]
+                 for dim in range(len(nd_slice))]
     return '[' + ','.join(slice_str) + ']'
 
 
@@ -36,7 +36,7 @@ def _string_to_slice(slice_str):
     slice_str = re.split('\D+', slice_str)
     slice_str = [int(num) for num in slice_str]
     return tuple([slice(slice_str[2*dim], slice_str[2*dim + 1])
-                  for dim in xrange(len(slice_str) // 2)])
+                  for dim in range(len(slice_str) // 2)])
 
 
 def _stamp_from_regions(hdu_list, regions, extension=0, **kwargs):
@@ -88,7 +88,7 @@ def _stamp_from_mask(hdu_list, mask, extension=0, masked_value=None,
     masked_indexes = where(mask)
     extents = tuple([slice(masked_indexes[dim].min(),
                            masked_indexes[dim].max()+1)
-                     for dim in xrange(len(masked_indexes))])
+                     for dim in range(len(masked_indexes))])
     mask = mask[extents]
 
     # copy the data of the hduList
@@ -176,7 +176,7 @@ def _cut_stamps_labels(source_file, label_file, source_ext=0, file_prefix='',
     label_data = fits.getdata(label_file)
     # If no specific labels were requested, cut stamps for every object
     if selected_labels is None:
-        selected_labels = xrange(1, label_data.max()+1)
+        selected_labels = range(1, label_data.max()+1)
 
     # Open cutting image
     hdu_list = fits.open(source_file, mode='readonly', ignore_missing_end=True)
@@ -258,7 +258,8 @@ def paste_stamps(target_file, stamp_files, target_ext=0, stamps_ext=0,
         dest_file will be overwritten.
     :rtype: Filename of the modified copy of target_file
     """
-    if isinstance(stamp_files, basestring):
+    # Python 2                              or Python 3
+    if not hasattr(stamp_files, '__iter__') or isinstance(stamp_files, str):
         stamp_files = [stamp_files]
     if output_name is None:
         output_name = target_file.replace('.fits', '_pasted.fits')
